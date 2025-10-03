@@ -7,7 +7,7 @@ import DataControls from "@/components/DataControls";
 import type { DataPoint } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { clearUser, loadUser, type StoredUser } from "@/lib/auth";
+import { clearUser, loadUser, saveUser, type StoredUser } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -124,6 +124,7 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [streamPoints, setStreamPoints] = useState<DataPoint[]>([]);
   const [recordedPoints, setRecordedPoints] = useState<DataPoint[]>([]);
   const [currentData, setCurrentData] = useState<DataPoint | null>(null);
@@ -338,9 +339,58 @@ export default function Home() {
     isRecordingRef.current = true;
   };
 
+  const handleUploadRecording = useCallback(async () => {
+    if (!recordedPoints.length) {
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const response = await fetch("/api/recordings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          fileName: fileName || "serial-data",
+          points: recordedPoints.map(({ timestamp, thrust, pressure, deviceTimestamp }) => ({
+            timestamp,
+            thrust,
+            pressure,
+            deviceTimestamp,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const message = typeof payload?.message === "string" ? payload.message : "Failed to upload recording.";
+        throw new Error(message);
+      }
+
+      toast({
+        title: "Recording uploaded",
+        description: "Admin can now review this session.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to upload recording.";
+      toast({
+        title: "Upload failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [recordedPoints, fileName, toast]);
+
   const handleStopRecording = () => {
     setIsRecording(false);
     isRecordingRef.current = false;
+    if (recordedPoints.length) {
+      void handleUploadRecording();
+    }
   };
 
   const handleClearData = () => {
@@ -372,12 +422,23 @@ export default function Home() {
   };
 
   const handleLogout = () => {
-    clearUser();
-    toast({
-      title: "Signed out",
-      description: "You have been logged out successfully.",
+
+    fetch("/api/logout", { method: "POST", credentials: "include" }).finally(() => {
+
+      clearUser();
+
+      toast({
+
+        title: "Signed out",
+
+        description: "You have been logged out successfully.",
+
+      });
+
+      setLocation("/login");
+
     });
-    setLocation("/login");
+
   };
 
   const liveData = useMemo(() => streamPoints.slice(-100), [streamPoints]);
@@ -415,6 +476,11 @@ export default function Home() {
               <div className="text-sm text-muted-foreground">
                 Signed in as <span className="font-medium text-foreground">{currentUser.fullName}</span>
               </div>
+              {currentUser.role === 'admin' && (
+                <Button variant="outline" size="sm" onClick={() => setLocation('/admin')}>
+                  Admin
+                </Button>
+              )}
               <Button variant="outline" onClick={handleLogout}>
                 Log out
               </Button>
@@ -434,12 +500,14 @@ export default function Home() {
               onStopRecording={handleStopRecording}
               onClearData={handleClearData}
               onExportCSV={handleExportCSV}
+              onUploadRecording={handleUploadRecording}
               recordedPoints={recordedPoints}
               fileName={fileName}
               onFileNameChange={setFileName}
               isStreaming={isStreaming}
               onStopStreaming={handleStopStreaming}
               onResumeStreaming={handleResumeStreaming}
+              isUploading={isUploading}
             />
           </div>
 
@@ -577,3 +645,13 @@ export default function Home() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+

@@ -11,15 +11,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { loadUser, saveUser } from "@/lib/auth";
+import { loadUser, saveUser, type StoredUser } from "@/lib/auth";
 import SpaceBackdrop from "@/components/SpaceBackdrop";
 
 interface LoginSuccessResponse {
-  user: {
-    id: string;
-    username: string;
-    fullName: string;
-  };
+  user: StoredUser;
 }
 
 export default function Login() {
@@ -47,6 +43,7 @@ export default function Login() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
 

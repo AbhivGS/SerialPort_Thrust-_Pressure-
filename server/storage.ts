@@ -3,6 +3,7 @@
   username: string;
   password: string;
   fullName: string;
+  role: "user" | "admin";
 }
 
 export interface IStorage {
@@ -15,10 +16,18 @@ export class MemStorage implements IStorage {
   constructor() {
     this.users = [
       {
-        id: '1',
-        username: 'engineer',
-        password: 'thrust123',
-        fullName: 'Test Engineer',
+        id: "1",
+        username: "engineer",
+        password: "thrust123",
+        fullName: "Test Engineer",
+        role: "user",
+      },
+      {
+        id: "admin",
+        username: "admin",
+        password: "missioncontrol",
+        fullName: "Mission Control",
+        role: "admin",
       },
     ];
   }

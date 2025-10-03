@@ -1,10 +1,28 @@
-import express, { type Request, Response, NextFunction } from "express";
+﻿import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
+import createMemoryStore from "memorystore";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
+const MemoryStore = createMemoryStore(session);
+const SESSION_SECRET = process.env.SESSION_SECRET || "serialgrapher-dev-secret";
+
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: false }));
+app.use(
+  session({
+    store: new MemoryStore({ checkPeriod: 1000 * 60 * 60 }),
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      maxAge: 1000 * 60 * 60 * 24,
+      sameSite: "lax",
+      secure: app.get("env") === "production",
+    },
+  }),
+);
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -25,8 +43,8 @@ app.use((req, res, next) => {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      if (logLine.length > 160) {
+        logLine = `${logLine.slice(0, 157)}...`;
       }
 
       log(logLine);
@@ -47,26 +65,18 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
+  const port = parseInt(process.env.PORT || "5000", 10);
   const listenOptions: any = {
     port,
     host: "0.0.0.0",
   };
 
-  // Windows does not support reusePort; enable it only on non-Windows platforms
   if (process.platform !== "win32") {
     listenOptions.reusePort = true;
   }

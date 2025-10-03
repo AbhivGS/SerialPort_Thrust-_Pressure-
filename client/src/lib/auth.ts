@@ -1,12 +1,13 @@
-﻿export const SESSION_STORAGE_KEY = 'serialgrapher:user';
+﻿export const SESSION_STORAGE_KEY = "serialgrapher:user";
 
 export interface StoredUser {
   id: string;
   username: string;
   fullName: string;
+  role: "user" | "admin";
 }
 
-const isBrowser = typeof window !== 'undefined';
+const isBrowser = typeof window !== "undefined";
 
 export function loadUser(): StoredUser | null {
   if (!isBrowser) {
@@ -20,11 +21,11 @@ export function loadUser(): StoredUser | null {
 
   try {
     const parsed = JSON.parse(raw) as StoredUser;
-    if (parsed && parsed.id && parsed.username) {
+    if (parsed && parsed.id && parsed.username && parsed.role) {
       return parsed;
     }
   } catch (error) {
-    console.warn('Failed to parse stored user', error);
+    console.warn("Failed to parse stored user", error);
   }
 
   return null;
