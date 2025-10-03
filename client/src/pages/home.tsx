@@ -389,9 +389,6 @@ export default function Home() {
   const handleStopRecording = () => {
     setIsRecording(false);
     isRecordingRef.current = false;
-    if (recordedPoints.length) {
-      void handleUploadRecording();
-    }
   };
 
   const handleClearData = () => {
