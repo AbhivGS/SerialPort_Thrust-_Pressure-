@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useMemo } from "react";
+﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
 import SerialConnection from "@/components/SerialConnection";
 import DataDisplay from "@/components/DataDisplay";
@@ -12,6 +12,110 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+type PercentRange = [number, number];
+
+type DataSummary = {
+  startTimestamp: string;
+  endTimestamp: string;
+  count: number;
+  thrustMin: number;
+  thrustMax: number;
+  thrustAvg: number;
+  pressureMin: number;
+  pressureMax: number;
+  pressureAvg: number;
+};
+
+const clampPercent = (value: number): number => Math.min(100, Math.max(0, value));
+
+const sanitizeRange = (range: PercentRange): PercentRange => {
+  const start = clampPercent(range[0]);
+  const end = clampPercent(range[1]);
+  return start <= end ? [start, end] : [end, start];
+};
+
+const sliceDataByPercent = (points: DataPoint[], range: PercentRange): DataPoint[] => {
+  if (!points.length) return [];
+
+  const [startPercent, endPercent] = sanitizeRange(range);
+  const maxIndex = points.length - 1;
+
+  if (maxIndex <= 0) {
+    return points;
+  }
+
+  if (Math.abs(endPercent - startPercent) < 0.0001) {
+    const index = Math.min(maxIndex, Math.round((startPercent / 100) * maxIndex));
+    return [points[index]];
+  }
+
+  const startIndex = Math.max(0, Math.floor((startPercent / 100) * maxIndex));
+  const endIndex = Math.max(startIndex, Math.min(maxIndex, Math.ceil((endPercent / 100) * maxIndex)));
+
+  return points.slice(startIndex, endIndex + 1);
+};
+
+const summarizeData = (points: DataPoint[]): DataSummary | null => {
+  if (!points.length) return null;
+
+  let thrustMin = points[0].thrust;
+  let thrustMax = points[0].thrust;
+  let thrustSum = 0;
+  let pressureMin = points[0].pressure;
+  let pressureMax = points[0].pressure;
+  let pressureSum = 0;
+
+  for (const point of points) {
+    thrustMin = Math.min(thrustMin, point.thrust);
+    thrustMax = Math.max(thrustMax, point.thrust);
+    pressureMin = Math.min(pressureMin, point.pressure);
+    pressureMax = Math.max(pressureMax, point.pressure);
+    thrustSum += point.thrust;
+    pressureSum += point.pressure;
+  }
+
+  const count = points.length;
+
+  return {
+    startTimestamp: points[0].timestamp,
+    endTimestamp: points[count - 1].timestamp,
+    count,
+    thrustMin,
+    thrustMax,
+    thrustAvg: thrustSum / count,
+    pressureMin,
+    pressureMax,
+    pressureAvg: pressureSum / count,
+  };
+};
+
+const zoomRange = (range: PercentRange, direction: "in" | "out"): PercentRange => {
+  const [start, end] = sanitizeRange(range);
+  const span = Math.max(end - start, 2);
+  const targetSpan = direction === "in" ? Math.max(span * 0.6, 2) : Math.min(span * 1.4, 100);
+  const center = (start + end) / 2;
+
+  let nextStart = center - targetSpan / 2;
+  let nextEnd = center + targetSpan / 2;
+
+  if (nextStart < 0) {
+    nextEnd = Math.min(100, nextEnd - nextStart);
+    nextStart = 0;
+  }
+
+  if (nextEnd > 100) {
+    const overflow = nextEnd - 100;
+    nextStart = Math.max(0, nextStart - overflow);
+    nextEnd = 100;
+  }
+
+  if (nextEnd - nextStart < 2) {
+    nextEnd = Math.min(100, nextStart + 2);
+  }
+
+  return sanitizeRange([nextStart, nextEnd]);
+};
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -23,7 +127,8 @@ export default function Home() {
   const [currentData, setCurrentData] = useState<DataPoint | null>(null);
   const [fileName, setFileName] = useState<string>("serial-data");
   const [activeChartTab, setActiveChartTab] = useState<"live" | "review">("live");
-  const [reviewRange, setReviewRange] = useState<[number, number]>([75, 100]);
+  const [reviewRange, setReviewRange] = useState<PercentRange>([0, 100]);
+  const [liveRange, setLiveRange] = useState<PercentRange>([85, 100]);
 
   const portRef = useRef<SerialPort | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
@@ -32,6 +137,14 @@ export default function Home() {
   const isRecordingRef = useRef(false);
 
   const hasData = dataPoints.length > 0;
+
+  const updateLiveRange = useCallback((range: PercentRange) => {
+    setLiveRange(sanitizeRange(range));
+  }, []);
+
+  const updateReviewRange = useCallback((range: PercentRange) => {
+    setReviewRange(sanitizeRange(range));
+  }, []);
 
   useEffect(() => {
     const user = loadUser();
@@ -46,9 +159,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!hasData) {
-      setReviewRange([0, 100]);
+      updateLiveRange([0, 100]);
+      updateReviewRange([0, 100]);
     }
-  }, [hasData]);
+  }, [hasData, updateLiveRange, updateReviewRange]);
+
+  const sortedLiveRange = useMemo(() => sanitizeRange(liveRange), [liveRange]);
+  const sortedReviewRange = useMemo(() => sanitizeRange(reviewRange), [reviewRange]);
 
   const parseSerialData = (line: string) => {
     const parts = line.trim().split(",").map((p) => p.trim());
@@ -106,7 +223,7 @@ export default function Home() {
   const handleConnect = async (port: SerialPort, _baudRate: number) => {
     portRef.current = port;
     setIsConnected(true);
-    readSerialData();
+    void readSerialData();
   };
 
   const handleDisconnect = async () => {
@@ -139,6 +256,8 @@ export default function Home() {
   const handleClearData = () => {
     setDataPoints([]);
     setCurrentData(null);
+    updateLiveRange([0, 100]);
+    updateReviewRange([0, 100]);
   };
 
   const handleExportCSV = () => {
@@ -177,64 +296,34 @@ export default function Home() {
     };
   }, []);
 
-  const sortedReviewRange = useMemo<[number, number]>(() => {
-    const [start, end] = reviewRange;
-    return [Math.min(start, end), Math.max(start, end)];
-  }, [reviewRange]);
+  const liveData = useMemo(() => sliceDataByPercent(dataPoints, sortedLiveRange), [dataPoints, sortedLiveRange]);
+  const reviewData = useMemo(() => sliceDataByPercent(dataPoints, sortedReviewRange), [dataPoints, sortedReviewRange]);
 
-  const reviewData = useMemo<DataPoint[]>(() => {
-    if (!hasData) {
-      return [];
-    }
+  const liveSummary = useMemo(() => summarizeData(liveData), [liveData]);
+  const reviewSummary = useMemo(() => summarizeData(reviewData), [reviewData]);
 
-    const [startPercent, endPercent] = sortedReviewRange;
-    const maxIndex = dataPoints.length - 1;
+  const handleLiveZoom = (direction: "in" | "out") => {
+    setLiveRange((prev) => zoomRange(prev, direction));
+  };
 
-    if (maxIndex <= 0) {
-      return dataPoints;
-    }
+  const handleReviewZoom = (direction: "in" | "out") => {
+    setReviewRange((prev) => zoomRange(prev, direction));
+  };
 
-    const startIndex = Math.max(0, Math.floor((startPercent / 100) * maxIndex));
-    const endIndex = Math.max(startIndex, Math.min(maxIndex, Math.ceil((endPercent / 100) * maxIndex)));
+  const handleLiveFollowLatest = () => {
+    const span = Math.max(sortedLiveRange[1] - sortedLiveRange[0], 10);
+    updateLiveRange([Math.max(0, 100 - span), 100]);
+  };
 
-    return dataPoints.slice(startIndex, endIndex + 1);
-  }, [dataPoints, hasData, sortedReviewRange]);
+  const handleReviewLatest = () => {
+    const span = Math.max(sortedReviewRange[1] - sortedReviewRange[0], 10);
+    updateReviewRange([Math.max(0, 100 - span), 100]);
+  };
 
-  const reviewSummary = useMemo(() => {
-    if (reviewData.length === 0) {
-      return null;
-    }
-
-    let thrustMin = reviewData[0].thrust;
-    let thrustMax = reviewData[0].thrust;
-    let thrustSum = 0;
-    let pressureMin = reviewData[0].pressure;
-    let pressureMax = reviewData[0].pressure;
-    let pressureSum = 0;
-
-    for (const point of reviewData) {
-      thrustMin = Math.min(thrustMin, point.thrust);
-      thrustMax = Math.max(thrustMax, point.thrust);
-      pressureMin = Math.min(pressureMin, point.pressure);
-      pressureMax = Math.max(pressureMax, point.pressure);
-      thrustSum += point.thrust;
-      pressureSum += point.pressure;
-    }
-
-    const count = reviewData.length;
-
-    return {
-      startTimestamp: reviewData[0].timestamp,
-      endTimestamp: reviewData[count - 1].timestamp,
-      count,
-      thrustMin,
-      thrustMax,
-      thrustAvg: thrustSum / count,
-      pressureMin,
-      pressureMax,
-      pressureAvg: pressureSum / count,
-    };
-  }, [reviewData]);
+  const handleReviewBeginning = () => {
+    const span = Math.max(sortedReviewRange[1] - sortedReviewRange[0], 10);
+    updateReviewRange([0, Math.min(100, span)]);
+  };
 
   if (!authChecked) {
     return null;
@@ -245,10 +334,8 @@ export default function Home() {
       <div className="container mx-auto p-6">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold mb-2">Serial Port Data Monitor</h1>
-            <p className="text-muted-foreground">
-              Real-time monitoring of thrust and pressure data from serial port
-            </p>
+            <h1 className="mb-2 text-3xl font-semibold">Serial Port Data Monitor</h1>
+            <p className="text-muted-foreground">Real-time monitoring of thrust and pressure data from serial port</p>
           </div>
           {currentUser && (
             <div className="flex items-center gap-3">
@@ -262,19 +349,11 @@ export default function Home() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1 space-y-6">
-            <SerialConnection
-              onConnect={handleConnect}
-              onDisconnect={handleDisconnect}
-              isConnected={isConnected}
-            />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+          <div className="space-y-6 lg:col-span-1">
+            <SerialConnection onConnect={handleConnect} onDisconnect={handleDisconnect} isConnected={isConnected} />
 
-            <DataDisplay
-              currentData={currentData}
-              dataPointCount={dataPoints.length}
-              isRecording={isRecording}
-            />
+            <DataDisplay currentData={currentData} dataPointCount={dataPoints.length} isRecording={isRecording} />
 
             <DataControls
               isRecording={isRecording}
@@ -288,7 +367,7 @@ export default function Home() {
             />
           </div>
 
-          <div className="lg:col-span-3 space-y-4">
+          <div className="space-y-4 lg:col-span-3">
             <Tabs
               value={activeChartTab}
               onValueChange={(value) => setActiveChartTab(value as "live" | "review")}
@@ -302,14 +381,105 @@ export default function Home() {
                   </TabsTrigger>
                 </TabsList>
                 {activeChartTab === "review" && hasData && reviewSummary && (
-                  <div className="text-xs sm:text-sm text-muted-foreground font-medium">
+                  <div className="text-xs font-medium text-muted-foreground sm:text-sm">
                     Showing {reviewSummary.count} points from {reviewSummary.startTimestamp} &rarr; {reviewSummary.endTimestamp}
+                  </div>
+                )}
+                {activeChartTab === "live" && hasData && liveSummary && (
+                  <div className="text-xs font-medium text-muted-foreground sm:text-sm">
+                    Following live window {sortedLiveRange[0].toFixed(0)}% - {sortedLiveRange[1].toFixed(0)}%
                   </div>
                 )}
               </div>
 
-              <TabsContent value="live">
-                <DataChart data={dataPoints} maxDataPoints={100} title="Real-Time Data Chart" />
+              <TabsContent value="live" className="space-y-4">
+                {hasData ? (
+                  <>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Live Timeline</CardTitle>
+                        <CardDescription>
+                          Drag the handles to zoom/pan the stream. Keep the right handle at 100% to focus on incoming data.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-5">
+                        <div className="px-1">
+                          <Slider
+                            value={sortedLiveRange}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onValueChange={(value) => {
+                              const [start, end] = value.length === 1 ? [value[0], value[0]] : [value[0], value[1]];
+                              updateLiveRange([start, end]);
+                            }}
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleLiveZoom("in")}>Zoom In</Button>
+                          <Button variant="outline" size="sm" onClick={() => handleLiveZoom("out")}>Zoom Out</Button>
+                          <Button variant="outline" size="sm" onClick={handleLiveFollowLatest}>Follow Latest</Button>
+                          <Button variant="ghost" size="sm" onClick={() => updateLiveRange([0, 100])}>Reset</Button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2 xl:grid-cols-3 sm:text-sm">
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window %</p>
+                            <p className="font-mono text-sm">{sortedLiveRange[0].toFixed(0)} - {sortedLiveRange[1].toFixed(0)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window start</p>
+                            <p className="font-mono text-sm">{liveSummary?.startTimestamp ?? "--:--:--"}</p>
+                          </div>
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window end</p>
+                            <p className="font-mono text-sm">{liveSummary?.endTimestamp ?? "--:--:--"}</p>
+                          </div>
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Points in view</p>
+                            <p className="font-mono text-sm">{liveSummary?.count ?? 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Thrust range (g)</p>
+                            <p className="font-mono text-sm">
+                              {liveSummary
+                                ? `${liveSummary.thrustMin.toFixed(2)} - ${liveSummary.thrustMax.toFixed(2)}`
+                                : "0.00 - 0.00"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Pressure range (bar)</p>
+                            <p className="font-mono text-sm">
+                              {liveSummary
+                                ? `${liveSummary.pressureMin.toFixed(2)} - ${liveSummary.pressureMax.toFixed(2)}`
+                                : "0.00 - 0.00"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Average readings</p>
+                            <p className="font-mono text-sm">
+                              {liveSummary
+                                ? `${liveSummary.thrustAvg.toFixed(2)} g / ${liveSummary.pressureAvg.toFixed(2)} bar`
+                                : "0.00 g / 0.00 bar"}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <DataChart
+                      data={liveData}
+                      maxDataPoints={null}
+                      title="Live Data Preview"
+                      emptyMessage="Waiting for incoming serial data."
+                    />
+                  </>
+                ) : (
+                  <Card>
+                    <CardContent className="flex h-[400px] items-center justify-center text-center text-sm text-muted-foreground">
+                      Connect to a serial device to begin streaming and visualise live data here.
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
 
               <TabsContent value="review" className="space-y-4">
@@ -319,7 +489,7 @@ export default function Home() {
                       <CardHeader>
                         <CardTitle className="text-lg">Recorded Timeline</CardTitle>
                         <CardDescription>
-                          Drag the handles to focus on a slice of your captured session.
+                          Drag the handles or use the quick actions to focus on a slice of your captured session.
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-5">
@@ -331,25 +501,36 @@ export default function Home() {
                             step={1}
                             onValueChange={(value) => {
                               const [start, end] = value.length === 1 ? [value[0], value[0]] : [value[0], value[1]];
-                              setReviewRange([Math.max(0, Math.min(100, start)), Math.max(0, Math.min(100, end))]);
+                              updateReviewRange([start, end]);
                             }}
                           />
                         </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 text-xs sm:text-sm">
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleReviewZoom("in")}>Zoom In</Button>
+                          <Button variant="outline" size="sm" onClick={() => handleReviewZoom("out")}>Zoom Out</Button>
+                          <Button variant="outline" size="sm" onClick={handleReviewLatest}>Jump to Latest</Button>
+                          <Button variant="outline" size="sm" onClick={handleReviewBeginning}>Jump to Start</Button>
+                          <Button variant="ghost" size="sm" onClick={() => updateReviewRange([0, 100])}>Reset</Button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2 xl:grid-cols-3 sm:text-sm">
                           <div>
-                            <p className="uppercase tracking-wide text-[0.65rem] text-muted-foreground">Window start</p>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window %</p>
+                            <p className="font-mono text-sm">{sortedReviewRange[0].toFixed(0)} – {sortedReviewRange[1].toFixed(0)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window start</p>
                             <p className="font-mono text-sm">{reviewSummary?.startTimestamp ?? "--:--:--"}</p>
                           </div>
                           <div>
-                            <p className="uppercase tracking-wide text-[0.65rem] text-muted-foreground">Window end</p>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window end</p>
                             <p className="font-mono text-sm">{reviewSummary?.endTimestamp ?? "--:--:--"}</p>
                           </div>
                           <div>
-                            <p className="uppercase tracking-wide text-[0.65rem] text-muted-foreground">Points selected</p>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Points selected</p>
                             <p className="font-mono text-sm">{reviewSummary?.count ?? 0}</p>
                           </div>
                           <div>
-                            <p className="uppercase tracking-wide text-[0.65rem] text-muted-foreground">Thrust range (g)</p>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Thrust range (g)</p>
                             <p className="font-mono text-sm">
                               {reviewSummary
                                 ? `${reviewSummary.thrustMin.toFixed(2)} – ${reviewSummary.thrustMax.toFixed(2)}`
@@ -357,7 +538,7 @@ export default function Home() {
                             </p>
                           </div>
                           <div>
-                            <p className="uppercase tracking-wide text-[0.65rem] text-muted-foreground">Pressure range (bar)</p>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Pressure range (bar)</p>
                             <p className="font-mono text-sm">
                               {reviewSummary
                                 ? `${reviewSummary.pressureMin.toFixed(2)} – ${reviewSummary.pressureMax.toFixed(2)}`
@@ -365,7 +546,7 @@ export default function Home() {
                             </p>
                           </div>
                           <div>
-                            <p className="uppercase tracking-wide text-[0.65rem] text-muted-foreground">Average readings</p>
+                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Average readings</p>
                             <p className="font-mono text-sm">
                               {reviewSummary
                                 ? `${reviewSummary.thrustAvg.toFixed(2)} g / ${reviewSummary.pressureAvg.toFixed(2)} bar`
@@ -378,7 +559,7 @@ export default function Home() {
 
                     <DataChart
                       data={reviewData}
-                      maxDataPoints={reviewData.length || null}
+                      maxDataPoints={null}
                       title="Recorded Data Chart"
                       emptyMessage="No recorded points in this window. Adjust the timeline above to explore your capture."
                     />
