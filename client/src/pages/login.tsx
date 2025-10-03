@@ -86,10 +86,7 @@ export default function Login() {
         <CardHeader>
           <CardTitle>Welcome to Serial Grapher</CardTitle>
           <CardDescription>
-            <span className="block">Sign in with your project credentials.</span>
-            <span className="block">
-              Use the demo account <code className="ml-1">engineer / thrust123</code> to explore.
-            </span>
+            <span className="block">Sign in with your project credentials to access the dashboard.</span>
           </CardDescription>
         </CardHeader>
         <CardContent>
