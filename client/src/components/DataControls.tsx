@@ -1,6 +1,6 @@
-import { Button } from '@/components/ui/button';
+﻿import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, Play, Pause, Trash2 } from 'lucide-react';
+import { Download, Play, Pause, Trash2, StopCircle, PlayCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import type { DataPoint } from '@shared/schema';
 
@@ -13,6 +13,9 @@ interface DataControlsProps {
   dataPoints: DataPoint[];
   fileName: string;
   onFileNameChange: (name: string) => void;
+  isStreaming: boolean;
+  onStopStreaming: () => void;
+  onResumeStreaming: () => void;
 }
 
 export default function DataControls({
@@ -24,7 +27,12 @@ export default function DataControls({
   dataPoints,
   fileName,
   onFileNameChange,
+  isStreaming,
+  onStopStreaming,
+  onResumeStreaming,
 }: DataControlsProps) {
+  const hasData = dataPoints.length > 0;
+
   return (
     <Card>
       <CardHeader className="space-y-1">
@@ -41,12 +49,33 @@ export default function DataControls({
             data-testid="input-file-name"
           />
         </div>
+
+        <Button
+          onClick={isStreaming ? onStopStreaming : onResumeStreaming}
+          variant={isStreaming ? 'outline' : 'default'}
+          className="w-full"
+          data-testid="button-toggle-stream"
+        >
+          {isStreaming ? (
+            <>
+              <StopCircle className="w-4 h-4 mr-2" />
+              Stop Data
+            </>
+          ) : (
+            <>
+              <PlayCircle className="w-4 h-4 mr-2" />
+              Resume Data
+            </>
+          )}
+        </Button>
+
         <div className="flex gap-2">
           {!isRecording ? (
             <Button
               onClick={onStartRecording}
               className="flex-1"
               data-testid="button-start-recording"
+              disabled={!isStreaming}
             >
               <Play className="w-4 h-4 mr-2" />
               Start Recording
@@ -68,7 +97,7 @@ export default function DataControls({
           onClick={onClearData}
           variant="outline"
           className="w-full"
-          disabled={dataPoints.length === 0}
+          disabled={!hasData}
           data-testid="button-clear-data"
         >
           <Trash2 className="w-4 h-4 mr-2" />
@@ -79,7 +108,7 @@ export default function DataControls({
           onClick={onExportCSV}
           variant="default"
           className="w-full"
-          disabled={dataPoints.length === 0}
+          disabled={!hasData}
           data-testid="button-export-csv"
         >
           <Download className="w-4 h-4 mr-2" />

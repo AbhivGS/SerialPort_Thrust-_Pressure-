@@ -123,6 +123,7 @@ export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
   const [currentData, setCurrentData] = useState<DataPoint | null>(null);
   const [fileName, setFileName] = useState<string>("serial-data");
@@ -134,6 +135,7 @@ export default function Home() {
   const decoderRef = useRef(new TextDecoder());
   const bufferRef = useRef("");
   const isRecordingRef = useRef(false);
+  const isStreamingRef = useRef(false);
 
   const hasData = dataPoints.length > 0;
 
@@ -160,33 +162,90 @@ export default function Home() {
 
   const sortedReviewRange = useMemo(() => sanitizeRange(reviewRange), [reviewRange]);
 
-  const parseSerialData = (line: string) => {
-    const parts = line.trim().split(",").map((p) => p.trim());
-    const timestamp = new Date().toISOString().slice(11, 19);
-    if (parts.length === 2 || parts.length === 3) {
-      const lastTwo = parts.slice(-2);
-      const thrust = parseFloat(lastTwo[0]);
-      const pressure = parseFloat(lastTwo[1]);
-      if (!Number.isNaN(thrust) && !Number.isNaN(pressure)) {
-        const deviceTimestamp = parts.length === 3 ? parts[0] : undefined;
-        return { timestamp, thrust, pressure, deviceTimestamp };
+  const handleStopStreaming = useCallback(async () => {
+    if (!isStreamingRef.current) {
+      return;
+    }
+
+    isStreamingRef.current = false;
+    setIsStreaming(false);
+
+    if (readerRef.current) {
+      try {
+        await readerRef.current.cancel();
+      } catch (error) {
+        console.warn("Failed to cancel reader", error);
       }
     }
-    return null;
-  };
+  }, []);
 
-  const readSerialData = async () => {
-    if (!portRef.current?.readable) return;
+  const handleDisconnect = useCallback(async () => {
+    await handleStopStreaming();
+
+    if (readerRef.current) {
+      try {
+        readerRef.current.releaseLock();
+      } catch (error) {
+        console.warn("Failed to release reader lock", error);
+      }
+      readerRef.current = null;
+    }
+
+    if (portRef.current) {
+      try {
+        await portRef.current.close();
+      } catch (error) {
+        console.warn("Failed to close port", error);
+      }
+      portRef.current = null;
+    }
+
+    setIsConnected(false);
+    setIsRecording(false);
+    isRecordingRef.current = false;
+    bufferRef.current = "";
+  }, [handleStopStreaming]);
+
+  useEffect(() => {
+    return () => {
+      if (portRef.current) {
+        void handleDisconnect();
+      }
+    };
+  }, [handleDisconnect]);
+
+  async function readSerialData() {
+    if (!portRef.current?.readable || !isStreamingRef.current) {
+      return;
+    }
 
     try {
       readerRef.current = portRef.current.readable.getReader();
 
-      while (readerRef.current) {
-        const { value, done } = await readerRef.current.read();
+      while (isStreamingRef.current && readerRef.current) {
+        let result: ReadableStreamReadResult<Uint8Array>;
+        try {
+          result = await readerRef.current.read();
+        } catch (error) {
+          if (!isStreamingRef.current) {
+            break;
+          }
+          console.error("Error reading serial data:", error);
+          break;
+        }
+
+        const { value, done } = result;
+
+        if (!isStreamingRef.current) {
+          break;
+        }
 
         if (done) {
-          readerRef.current.releaseLock();
           break;
+        }
+
+        if (!value) {
+          continue;
         }
 
         const text = decoderRef.current.decode(value, { stream: true });
@@ -208,33 +267,54 @@ export default function Home() {
           }
         }
       }
-    } catch (error) {
-      console.error("Error reading serial data:", error);
+    } finally {
+      if (readerRef.current) {
+        try {
+          readerRef.current.releaseLock();
+        } catch (error) {
+          console.warn("Failed to release reader lock", error);
+        }
+        readerRef.current = null;
+      }
     }
+  }
+
+  const parseSerialData = (line: string) => {
+    const parts = line.trim().split(",").map((p) => p.trim());
+    const timestamp = new Date().toISOString().slice(11, 19);
+    if (parts.length === 2 || parts.length === 3) {
+      const lastTwo = parts.slice(-2);
+      const thrust = parseFloat(lastTwo[0]);
+      const pressure = parseFloat(lastTwo[1]);
+      if (!Number.isNaN(thrust) && !Number.isNaN(pressure)) {
+        const deviceTimestamp = parts.length === 3 ? parts[0] : undefined;
+        return { timestamp, thrust, pressure, deviceTimestamp };
+      }
+    }
+    return null;
   };
 
   const handleConnect = async (port: SerialPort, _baudRate: number) => {
     portRef.current = port;
     setIsConnected(true);
+    isStreamingRef.current = true;
+    setIsStreaming(true);
     void readSerialData();
   };
 
-  const handleDisconnect = async () => {
-    if (readerRef.current) {
-      await readerRef.current.cancel();
-      readerRef.current = null;
+  const handleResumeStreaming = useCallback(() => {
+    if (isStreamingRef.current) {
+      return;
     }
 
-    if (portRef.current) {
-      await portRef.current.close();
-      portRef.current = null;
+    if (!portRef.current?.readable) {
+      return;
     }
 
-    setIsConnected(false);
-    setIsRecording(false);
-    isRecordingRef.current = false;
-    bufferRef.current = "";
-  };
+    isStreamingRef.current = true;
+    setIsStreaming(true);
+    void readSerialData();
+  }, []);
 
   const handleStartRecording = () => {
     setIsRecording(true);
@@ -249,7 +329,6 @@ export default function Home() {
   const handleClearData = () => {
     setDataPoints([]);
     setCurrentData(null);
-    updateReviewRange([0, 100]);
   };
 
   const handleExportCSV = () => {
@@ -279,14 +358,6 @@ export default function Home() {
     });
     setLocation("/login");
   };
-
-  useEffect(() => {
-    return () => {
-      if (portRef.current) {
-        void handleDisconnect();
-      }
-    };
-  }, []);
 
   const liveData = useMemo(() => dataPoints.slice(-100), [dataPoints]);
   const reviewData = useMemo(() => sliceDataByPercent(dataPoints, sortedReviewRange), [dataPoints, sortedReviewRange]);
@@ -346,6 +417,9 @@ export default function Home() {
               dataPoints={dataPoints}
               fileName={fileName}
               onFileNameChange={setFileName}
+              isStreaming={isStreaming}
+              onStopStreaming={handleStopStreaming}
+              onResumeStreaming={handleResumeStreaming}
             />
           </div>
 
