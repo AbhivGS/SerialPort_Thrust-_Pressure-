@@ -404,6 +404,10 @@ export default function Home() {
       return;
     }
 
+    void handleUploadRecording().catch(() => {
+      /* upload failure handled via toast */
+    });
+
     const csvHeader = "Timestamp,Thrust (g),Pressure (bar)\n";
     const csvRows = recordedPoints
       .map((d) => `${(d as any).deviceTimestamp || d.timestamp},${d.thrust},${d.pressure}`)
