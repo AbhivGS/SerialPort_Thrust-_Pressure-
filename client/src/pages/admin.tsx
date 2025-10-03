@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { clearUser, loadUser } from "@/lib/auth";
+import { loadUser } from "@/lib/auth";
 
 interface RecordingListItem {
   id: number;
@@ -38,11 +38,6 @@ export default function Admin() {
     setError(null);
     try {
       const response = await fetch("/api/recordings", { credentials: "include" });
-      if (response.status === 401 || response.status === 403) {
-        clearUser();
-        setLocation("/login");
-        return;
-      }
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -58,15 +53,13 @@ export default function Admin() {
     } finally {
       setIsLoading(false);
     }
-  }, [setLocation]);
+  }, []);
 
   useEffect(() => {
     fetchRecordings();
+    const interval = window.setInterval(fetchRecordings, 10000);
+    return () => window.clearInterval(interval);
   }, [fetchRecordings]);
-
-  const handleRefresh = () => {
-    fetchRecordings();
-  };
 
   const handleCopyLink = (id: number) => {
     const url = `${window.location.origin}/api/recordings/${id}/download`;
@@ -92,9 +85,6 @@ export default function Admin() {
             <h1 className="text-3xl font-semibold">Uploaded Recordings</h1>
             <p className="text-muted-foreground">Review CSV sessions shared by the test team.</p>
           </div>
-          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </Button>
         </div>
 
         <Card>

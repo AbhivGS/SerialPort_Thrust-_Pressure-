@@ -340,7 +340,7 @@ export default function Home() {
   };
 
   const handleUploadRecording = useCallback(async () => {
-    if (!recordedPoints.length) {
+    if (!recordedPoints.length || isUploading) {
       return;
     }
 
@@ -380,10 +380,11 @@ export default function Home() {
         description: message,
         variant: "destructive",
       });
+      throw error;
     } finally {
       setIsUploading(false);
     }
-  }, [recordedPoints, fileName, toast]);
+  }, [recordedPoints, fileName, toast, isUploading]);
 
   const handleStopRecording = () => {
     setIsRecording(false);
