@@ -1,28 +1,45 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'wouter';
 import SerialConnection from '@/components/SerialConnection';
 import DataDisplay from '@/components/DataDisplay';
 import DataChart from '@/components/DataChart';
 import DataControls from '@/components/DataControls';
 import type { DataPoint } from '@shared/schema';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { clearUser, loadUser, type StoredUser } from '@/lib/auth';
 
 export default function Home() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
   const [currentData, setCurrentData] = useState<DataPoint | null>(null);
   const [fileName, setFileName] = useState<string>('serial-data');
-  
+
   const portRef = useRef<SerialPort | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
   const decoderRef = useRef(new TextDecoder());
   const bufferRef = useRef('');
   const isRecordingRef = useRef(false);
 
+  useEffect(() => {
+    const user = loadUser();
+    if (!user) {
+      setLocation('/login');
+      return;
+    }
+
+    setCurrentUser(user);
+    setAuthChecked(true);
+  }, [setLocation]);
+
   const parseSerialData = (line: string) => {
     const parts = line.trim().split(',').map(p => p.trim());
-    // Always use laptop time (HH:MM:SS)
     const timestamp = new Date().toISOString().slice(11, 19);
-    // Accept 2-field: thrust,pressure OR 3-field: deviceTs,thrust,pressure (ignore deviceTs)
     if (parts.length === 2 || parts.length === 3) {
       const lastTwo = parts.slice(-2);
       const thrust = parseFloat(lastTwo[0]);
@@ -40,10 +57,10 @@ export default function Home() {
 
     try {
       readerRef.current = portRef.current.readable.getReader();
-      
+
       while (readerRef.current) {
         const { value, done } = await readerRef.current.read();
-        
+
         if (done) {
           readerRef.current.releaseLock();
           break;
@@ -60,7 +77,6 @@ export default function Home() {
             const dataPoint = parseSerialData(line);
             if (dataPoint) {
               setCurrentData(dataPoint);
-              // Always feed the chart so it updates live; cap history to avoid unbounded growth
               setDataPoints(prev => {
                 const next = [...prev, dataPoint];
                 return next.length > 2000 ? next.slice(next.length - 2000) : next;
@@ -131,6 +147,15 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
+  const handleLogout = () => {
+    clearUser();
+    toast({
+      title: 'Signed out',
+      description: 'You have been logged out successfully.',
+    });
+    setLocation('/login');
+  };
+
   useEffect(() => {
     return () => {
       if (portRef.current) {
@@ -139,14 +164,30 @@ export default function Home() {
     };
   }, []);
 
+  if (!authChecked) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6">
-        <div className="mb-6">
-          <h1 className="text-3xl font-semibold mb-2">Serial Port Data Monitor</h1>
-          <p className="text-muted-foreground">
-            Real-time monitoring of thrust and pressure data from serial port
-          </p>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold mb-2">Serial Port Data Monitor</h1>
+            <p className="text-muted-foreground">
+              Real-time monitoring of thrust and pressure data from serial port
+            </p>
+          </div>
+          {currentUser && (
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-muted-foreground">
+                Signed in as <span className="font-medium text-foreground">{currentUser.fullName}</span>
+              </div>
+              <Button variant="outline" onClick={handleLogout}>
+                Log out
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -170,8 +211,8 @@ export default function Home() {
               onClearData={handleClearData}
               onExportCSV={handleExportCSV}
               dataPoints={dataPoints}
-            fileName={fileName}
-            onFileNameChange={setFileName}
+              fileName={fileName}
+              onFileNameChange={setFileName}
             />
           </div>
 
