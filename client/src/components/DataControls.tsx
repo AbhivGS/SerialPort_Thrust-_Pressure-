@@ -15,8 +15,8 @@ interface DataControlsProps {
   fileName: string;
   onFileNameChange: (name: string) => void;
   isStreaming: boolean;
-  onStopStreaming: () => void;
-  onResumeStreaming: () => void;
+  onStopStreaming: () => Promise<void> | void;
+  onResumeStreaming: () => Promise<void> | void;
   isUploading: boolean;
 }
 
