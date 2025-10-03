@@ -28,7 +28,7 @@ export default function Splash({ durationMs = 2600, onDone }: SplashProps) {
           <div className="relative">
             <div className="absolute -inset-10 rounded-2xl border border-primary/25 shadow-inner animate-[glow_1600ms_ease-in-out_infinite]" />
             <img
-              src="/spantrik-logo.png"
+              src="/spantrik-logo_white.png"
               alt="SPANTRIK"
               className="max-w-[80vw] w-[680px] h-auto drop-shadow-xl md:max-w-[60vw] animate-[splash-in_900ms_cubic-bezier(0.22,1,0.36,1)_both,soft-float_3s_ease-in-out_infinite_900ms]"
             />
