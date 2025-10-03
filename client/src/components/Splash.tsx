@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import SpaceBackdrop from "@/components/SpaceBackdrop";
 
 type SplashProps = {
   durationMs?: number;
@@ -19,18 +20,22 @@ export default function Splash({ durationMs = 2600, onDone }: SplashProps) {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] grid place-items-center bg-background">
-      <div className="flex flex-col items-center gap-8 select-none">
-        <div className="relative">
-          <div className="absolute -inset-10 rounded-2xl border border-primary/25 shadow-inner animate-[glow_1600ms_ease-in-out_infinite]" />
-          <img
-            src="/spantrik-logo.png"
-            alt="SPANTRIK"
-            className="max-w-[80vw] md:max-w-[60vw] w-[680px] h-auto drop-shadow-xl animate-[splash-in_900ms_cubic-bezier(0.22,1,0.36,1)_both,soft-float_3s_ease-in-out_infinite_900ms]"
-          />
-        </div>
-        <div className="h-1 w-72 overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-1/3 bg-primary animate-[loading_1.6s_ease-in-out_infinite]" />
+    <div className="fixed inset-0 z-[1000]">
+      <div className="relative grid h-full w-full place-items-center overflow-hidden bg-[#050816]">
+        <SpaceBackdrop variant="splash" className="opacity-90" />
+
+        <div className="relative z-10 flex select-none flex-col items-center gap-8">
+          <div className="relative">
+            <div className="absolute -inset-10 rounded-2xl border border-primary/25 shadow-inner animate-[glow_1600ms_ease-in-out_infinite]" />
+            <img
+              src="/spantrik-logo.png"
+              alt="SPANTRIK"
+              className="max-w-[80vw] w-[680px] h-auto drop-shadow-xl md:max-w-[60vw] animate-[splash-in_900ms_cubic-bezier(0.22,1,0.36,1)_both,soft-float_3s_ease-in-out_infinite_900ms]"
+            />
+          </div>
+          <div className="h-1 w-72 overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/3 bg-primary animate-[loading_1.6s_ease-in-out_infinite]" />
+          </div>
         </div>
       </div>
       <style>
@@ -59,6 +64,3 @@ export default function Splash({ durationMs = 2600, onDone }: SplashProps) {
     </div>
   );
 }
-
-
-

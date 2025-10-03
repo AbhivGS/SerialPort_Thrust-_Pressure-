@@ -316,7 +316,7 @@
     inset: -1px;
   }
 }
-@keyframes login-star-twinkle {
+@keyframes space-star-twinkle {
   0%, 100% {
     opacity: 0.35;
     transform: scale(1);
@@ -327,7 +327,7 @@
   }
 }
 
-@keyframes login-rocket-launch {
+@keyframes space-rocket-launch {
   0% {
     transform: translate(-50%, 65vh) scale(0.9) rotate(-4deg);
     opacity: 0;
@@ -347,7 +347,7 @@
   }
 }
 
-@keyframes login-rocket-flicker {
+@keyframes space-rocket-flicker {
   0%, 100% {
     transform: translateX(-50%) scaleY(0.9);
     opacity: 0.8;
@@ -358,7 +358,7 @@
   }
 }
 
-@keyframes login-mars-glow {
+@keyframes space-mars-glow {
   0%, 100% {
     transform: translateY(0) scale(1);
     opacity: 0.85;
@@ -370,16 +370,17 @@
 }
 
 @layer components {
-  .login-scene {
+  .space-scene {
     position: absolute;
     inset: 0;
     background: radial-gradient(circle at 20% 20%, rgba(123, 159, 255, 0.18), transparent 45%),
       radial-gradient(circle at 80% 80%, rgba(255, 105, 97, 0.15), transparent 55%),
       #050714;
     overflow: hidden;
+    pointer-events: none;
   }
 
-  .login-scene::before {
+  .space-scene::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -387,17 +388,17 @@
     pointer-events: none;
   }
 
-  .login-star {
+  .space-star {
     position: absolute;
     border-radius: 9999px;
     background: rgba(255, 255, 255, 0.95);
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-    animation-name: login-star-twinkle;
+    animation-name: space-star-twinkle;
     animation-timing-function: ease-in-out;
     animation-iteration-count: infinite;
   }
 
-  .login-planet {
+  .space-planet {
     position: absolute;
     right: -7rem;
     bottom: -14rem;
@@ -407,10 +408,10 @@
     background: radial-gradient(circle at 30% 35%, rgba(255, 195, 113, 0.85) 0%, rgba(255, 87, 51, 0.9) 45%, rgba(199, 44, 65, 0.95) 70%, rgba(136, 32, 63, 1) 100%);
     box-shadow: 0 0 120px rgba(255, 127, 80, 0.35);
     filter: blur(0.5px);
-    animation: login-mars-glow 14s ease-in-out infinite;
+    animation: space-mars-glow 14s ease-in-out infinite;
   }
 
-  .login-planet::after {
+  .space-planet::after {
     content: "";
     position: absolute;
     inset: 18%;
@@ -419,23 +420,23 @@
     opacity: 0.55;
   }
 
-  .login-rocket {
+  .space-rocket {
     position: absolute;
     bottom: -7rem;
     left: 50%;
     width: 5rem;
     height: 8.5rem;
     transform: translateX(-50%);
-    animation: login-rocket-launch 12s cubic-bezier(0.55, 0.03, 0.24, 1) infinite;
+    animation: space-rocket-launch 12s cubic-bezier(0.55, 0.03, 0.24, 1) infinite;
     pointer-events: none;
   }
 
-  .login-rocket__svg {
+  .space-rocket__svg {
     width: 100%;
     height: 100%;
   }
 
-  .login-rocket__trail {
+  .space-rocket__trail {
     position: absolute;
     bottom: -5.5rem;
     left: 50%;
@@ -447,7 +448,7 @@
     opacity: 0.9;
   }
 
-  .login-rocket__flame {
+  .space-rocket__flame {
     position: absolute;
     bottom: -2rem;
     left: 50%;
@@ -457,6 +458,22 @@
     border-radius: 50% 50% 40% 40%;
     background: radial-gradient(circle at 50% 20%, rgba(255, 245, 157, 0.95) 0%, rgba(255, 183, 77, 0.9) 45%, rgba(255, 87, 51, 0.75) 70%, rgba(255, 87, 51, 0) 100%);
     filter: blur(2px);
-    animation: login-rocket-flicker 0.4s ease-in-out infinite;
+    animation: space-rocket-flicker 0.4s ease-in-out infinite;
   }
+  .space-rocket.space-rocket--splash {
+    bottom: -9rem;
+    animation-duration: 16s;
+    animation-delay: 0.6s;
+  }
+
+  .space-rocket.space-rocket--splash .space-rocket__trail {
+    height: 12rem;
+    opacity: 0.75;
+  }
+
+  .space-rocket.space-rocket--splash .space-rocket__flame {
+    animation-duration: 0.5s;
+  }
+
+
 }
