@@ -124,7 +124,8 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
+  const [streamPoints, setStreamPoints] = useState<DataPoint[]>([]);
+  const [recordedPoints, setRecordedPoints] = useState<DataPoint[]>([]);
   const [currentData, setCurrentData] = useState<DataPoint | null>(null);
   const [fileName, setFileName] = useState<string>("serial-data");
   const [activeChartTab, setActiveChartTab] = useState<"live" | "review">("live");
@@ -137,7 +138,8 @@ export default function Home() {
   const isRecordingRef = useRef(false);
   const isStreamingRef = useRef(false);
 
-  const hasData = dataPoints.length > 0;
+  const hasStreamData = streamPoints.length > 0;
+  const hasRecordedData = recordedPoints.length > 0;
 
   const updateReviewRange = useCallback((range: PercentRange) => {
     setReviewRange(sanitizeRange(range));
@@ -155,10 +157,10 @@ export default function Home() {
   }, [setLocation]);
 
   useEffect(() => {
-    if (!hasData) {
+    if (!hasRecordedData) {
       updateReviewRange([0, 100]);
     }
-  }, [hasData, updateReviewRange]);
+  }, [hasRecordedData, updateReviewRange]);
 
   const sortedReviewRange = useMemo(() => sanitizeRange(reviewRange), [reviewRange]);
 
@@ -203,6 +205,7 @@ export default function Home() {
     setIsConnected(false);
     setIsRecording(false);
     isRecordingRef.current = false;
+    setCurrentData(null);
     bufferRef.current = "";
   }, [handleStopStreaming]);
 
@@ -213,6 +216,21 @@ export default function Home() {
       }
     };
   }, [handleDisconnect]);
+
+  const parseSerialData = (line: string) => {
+    const parts = line.trim().split(",").map((p) => p.trim());
+    const timestamp = new Date().toISOString().slice(11, 19);
+    if (parts.length === 2 || parts.length === 3) {
+      const lastTwo = parts.slice(-2);
+      const thrust = parseFloat(lastTwo[0]);
+      const pressure = parseFloat(lastTwo[1]);
+      if (!Number.isNaN(thrust) && !Number.isNaN(pressure)) {
+        const deviceTimestamp = parts.length === 3 ? parts[0] : undefined;
+        return { timestamp, thrust, pressure, deviceTimestamp };
+      }
+    }
+    return null;
+  };
 
   async function readSerialData() {
     if (!portRef.current?.readable || !isStreamingRef.current) {
@@ -255,15 +273,26 @@ export default function Home() {
         bufferRef.current = lines.pop() || "";
 
         for (const line of lines) {
-          if (line.trim()) {
-            const dataPoint = parseSerialData(line);
-            if (dataPoint) {
-              setCurrentData(dataPoint);
-              setDataPoints((prev) => {
-                const next = [...prev, dataPoint];
-                return next.length > 2000 ? next.slice(next.length - 2000) : next;
-              });
-            }
+          if (!line.trim()) {
+            continue;
+          }
+
+          const dataPoint = parseSerialData(line);
+          if (!dataPoint) {
+            continue;
+          }
+
+          setCurrentData(dataPoint);
+          setStreamPoints((prev) => {
+            const next = [...prev, dataPoint];
+            return next.length > 2000 ? next.slice(next.length - 2000) : next;
+          });
+
+          if (isRecordingRef.current) {
+            setRecordedPoints((prev) => {
+              const next = [...prev, dataPoint];
+              return next.length > 5000 ? next.slice(next.length - 5000) : next;
+            });
           }
         }
       }
@@ -278,21 +307,6 @@ export default function Home() {
       }
     }
   }
-
-  const parseSerialData = (line: string) => {
-    const parts = line.trim().split(",").map((p) => p.trim());
-    const timestamp = new Date().toISOString().slice(11, 19);
-    if (parts.length === 2 || parts.length === 3) {
-      const lastTwo = parts.slice(-2);
-      const thrust = parseFloat(lastTwo[0]);
-      const pressure = parseFloat(lastTwo[1]);
-      if (!Number.isNaN(thrust) && !Number.isNaN(pressure)) {
-        const deviceTimestamp = parts.length === 3 ? parts[0] : undefined;
-        return { timestamp, thrust, pressure, deviceTimestamp };
-      }
-    }
-    return null;
-  };
 
   const handleConnect = async (port: SerialPort, _baudRate: number) => {
     portRef.current = port;
@@ -311,12 +325,15 @@ export default function Home() {
       return;
     }
 
+    bufferRef.current = "";
     isStreamingRef.current = true;
     setIsStreaming(true);
     void readSerialData();
   }, []);
 
   const handleStartRecording = () => {
+    setRecordedPoints([]);
+    updateReviewRange([0, 100]);
     setIsRecording(true);
     isRecordingRef.current = true;
   };
@@ -327,13 +344,17 @@ export default function Home() {
   };
 
   const handleClearData = () => {
-    setDataPoints([]);
-    setCurrentData(null);
+    setRecordedPoints([]);
+    updateReviewRange([0, 100]);
   };
 
   const handleExportCSV = () => {
+    if (!recordedPoints.length) {
+      return;
+    }
+
     const csvHeader = "Timestamp,Thrust (g),Pressure (bar)\n";
-    const csvRows = dataPoints
+    const csvRows = recordedPoints
       .map((d) => `${(d as any).deviceTimestamp || d.timestamp},${d.thrust},${d.pressure}`)
       .join("\n");
     const csv = csvHeader + csvRows;
@@ -359,9 +380,8 @@ export default function Home() {
     setLocation("/login");
   };
 
-  const liveData = useMemo(() => dataPoints.slice(-100), [dataPoints]);
-  const reviewData = useMemo(() => sliceDataByPercent(dataPoints, sortedReviewRange), [dataPoints, sortedReviewRange]);
-
+  const liveData = useMemo(() => streamPoints.slice(-100), [streamPoints]);
+  const reviewData = useMemo(() => sliceDataByPercent(recordedPoints, sortedReviewRange), [recordedPoints, sortedReviewRange]);
   const reviewSummary = useMemo(() => summarizeData(reviewData), [reviewData]);
 
   const handleReviewZoom = (direction: "in" | "out") => {
@@ -406,7 +426,7 @@ export default function Home() {
           <div className="space-y-6 lg:col-span-1">
             <SerialConnection onConnect={handleConnect} onDisconnect={handleDisconnect} isConnected={isConnected} />
 
-            <DataDisplay currentData={currentData} dataPointCount={dataPoints.length} isRecording={isRecording} />
+            <DataDisplay currentData={currentData} dataPointCount={streamPoints.length} isRecording={isRecording} />
 
             <DataControls
               isRecording={isRecording}
@@ -414,7 +434,7 @@ export default function Home() {
               onStopRecording={handleStopRecording}
               onClearData={handleClearData}
               onExportCSV={handleExportCSV}
-              dataPoints={dataPoints}
+              recordedPoints={recordedPoints}
               fileName={fileName}
               onFileNameChange={setFileName}
               isStreaming={isStreaming}
@@ -432,11 +452,11 @@ export default function Home() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <TabsList>
                   <TabsTrigger value="live">Live Stream</TabsTrigger>
-                  <TabsTrigger value="review" disabled={!hasData}>
+                  <TabsTrigger value="review" disabled={!hasRecordedData}>
                     Recorded Review
                   </TabsTrigger>
                 </TabsList>
-                {activeChartTab === "review" && hasData && reviewSummary && (
+                {activeChartTab === "review" && hasRecordedData && reviewSummary && (
                   <div className="text-xs font-medium text-muted-foreground sm:text-sm">
                     Showing {reviewSummary.count} points from {reviewSummary.startTimestamp} &rarr; {reviewSummary.endTimestamp}
                   </div>
@@ -444,7 +464,7 @@ export default function Home() {
               </div>
 
               <TabsContent value="live" className="space-y-4">
-                {hasData ? (
+                {hasStreamData ? (
                   <DataChart
                     data={liveData}
                     maxDataPoints={100}
@@ -461,13 +481,13 @@ export default function Home() {
               </TabsContent>
 
               <TabsContent value="review" className="space-y-4">
-                {hasData ? (
+                {hasRecordedData ? (
                   <>
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-lg">Recorded Timeline</CardTitle>
                         <CardDescription>
-                          Drag the handles or use the quick actions to focus on a slice of your captured session.
+                          Drag the handles or use the quick actions to focus on your captured session.
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-5">
