@@ -1,6 +1,6 @@
 ﻿import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, Play, Pause, Trash2, StopCircle, PlayCircle, Upload } from "lucide-react";
+import { Download, Play, Pause, Trash2, StopCircle, PlayCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { DataPoint } from "@shared/schema";
 
@@ -10,7 +10,6 @@ interface DataControlsProps {
   onStopRecording: () => void;
   onClearData: () => void;
   onExportCSV: () => void;
-  onUploadRecording: () => Promise<void> | void;
   recordedPoints: DataPoint[];
   fileName: string;
   onFileNameChange: (name: string) => void;
@@ -26,7 +25,6 @@ export default function DataControls({
   onStopRecording,
   onClearData,
   onExportCSV,
-  onUploadRecording,
   recordedPoints,
   fileName,
   onFileNameChange,
@@ -51,6 +49,7 @@ export default function DataControls({
             onChange={(e) => onFileNameChange(e.target.value)}
             placeholder="serial-data"
             data-testid="input-file-name"
+            disabled={isUploading}
           />
         </div>
 
@@ -79,7 +78,7 @@ export default function DataControls({
               onClick={onStartRecording}
               className="flex-1"
               data-testid="button-start-recording"
-              disabled={!isStreaming}
+              disabled={!isStreaming || isUploading}
             >
               <Play className="mr-2 h-4 w-4" />
               Start Recording
@@ -98,17 +97,6 @@ export default function DataControls({
         </div>
 
         <Button
-          onClick={onUploadRecording}
-          variant="default"
-          className="w-full"
-          disabled={!hasRecordedData || isUploading}
-          data-testid="button-upload-recording"
-        >
-          <Upload className="mr-2 h-4 w-4" />
-          {isUploading ? "Uploading..." : "Send to Admin"}
-        </Button>
-
-        <Button
           onClick={onClearData}
           variant="outline"
           className="w-full"
@@ -123,14 +111,17 @@ export default function DataControls({
           onClick={onExportCSV}
           variant="outline"
           className="w-full"
-          disabled={!hasRecordedData}
+          disabled={!hasRecordedData || isUploading}
           data-testid="button-export-csv"
         >
           <Download className="mr-2 h-4 w-4" />
           Export Recording to CSV
         </Button>
+
+        {isUploading && (
+          <p className="text-xs text-muted-foreground text-center">Uploading recording for admin&hellip;</p>
+        )}
       </CardContent>
     </Card>
   );
 }
-
