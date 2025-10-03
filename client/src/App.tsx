@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
 import NotFound from "@/pages/not-found";
+import { useState } from "react";
+import Splash from "@/components/Splash";
 
 function Router() {
   return (
@@ -16,11 +18,16 @@ function Router() {
 }
 
 function App() {
+  const [booted, setBooted] = useState(false);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        {!booted && <Splash onDone={() => setBooted(true)} />}
+        <div className={booted ? "opacity-100" : "opacity-0 transition-opacity duration-300"}>
+          <Router />
+        </div>
       </TooltipProvider>
     </QueryClientProvider>
   );

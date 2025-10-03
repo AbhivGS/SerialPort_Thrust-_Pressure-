@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Download, Play, Pause, Trash2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import type { DataPoint } from '@shared/schema';
 
 interface DataControlsProps {
@@ -10,6 +11,8 @@ interface DataControlsProps {
   onClearData: () => void;
   onExportCSV: () => void;
   dataPoints: DataPoint[];
+  fileName: string;
+  onFileNameChange: (name: string) => void;
 }
 
 export default function DataControls({
@@ -19,6 +22,8 @@ export default function DataControls({
   onClearData,
   onExportCSV,
   dataPoints,
+  fileName,
+  onFileNameChange,
 }: DataControlsProps) {
   return (
     <Card>
@@ -27,6 +32,15 @@ export default function DataControls({
         <CardDescription>Manage data recording and export</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">File name</label>
+          <Input
+            value={fileName}
+            onChange={(e) => onFileNameChange(e.target.value)}
+            placeholder="serial-data"
+            data-testid="input-file-name"
+          />
+        </div>
         <div className="flex gap-2">
           {!isRecording ? (
             <Button

@@ -10,21 +10,26 @@ export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
   const [currentData, setCurrentData] = useState<DataPoint | null>(null);
+  const [fileName, setFileName] = useState<string>('serial-data');
   
   const portRef = useRef<SerialPort | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
   const decoderRef = useRef(new TextDecoder());
   const bufferRef = useRef('');
+  const isRecordingRef = useRef(false);
 
   const parseSerialData = (line: string) => {
-    const parts = line.trim().split(',');
-    if (parts.length === 3) {
-      const timestamp = parts[0].trim();
-      const thrust = parseFloat(parts[1].trim());
-      const pressure = parseFloat(parts[2].trim());
-
+    const parts = line.trim().split(',').map(p => p.trim());
+    // Always use laptop time (HH:MM:SS)
+    const timestamp = new Date().toISOString().slice(11, 19);
+    // Accept 2-field: thrust,pressure OR 3-field: deviceTs,thrust,pressure (ignore deviceTs)
+    if (parts.length === 2 || parts.length === 3) {
+      const lastTwo = parts.slice(-2);
+      const thrust = parseFloat(lastTwo[0]);
+      const pressure = parseFloat(lastTwo[1]);
       if (!isNaN(thrust) && !isNaN(pressure)) {
-        return { timestamp, thrust, pressure };
+        const deviceTimestamp = parts.length === 3 ? parts[0] : undefined;
+        return { timestamp, thrust, pressure, deviceTimestamp };
       }
     }
     return null;
@@ -55,9 +60,11 @@ export default function Home() {
             const dataPoint = parseSerialData(line);
             if (dataPoint) {
               setCurrentData(dataPoint);
-              if (isRecording) {
-                setDataPoints(prev => [...prev, dataPoint]);
-              }
+              // Always feed the chart so it updates live; cap history to avoid unbounded growth
+              setDataPoints(prev => {
+                const next = [...prev, dataPoint];
+                return next.length > 2000 ? next.slice(next.length - 2000) : next;
+              });
             }
           }
         }
@@ -86,15 +93,18 @@ export default function Home() {
 
     setIsConnected(false);
     setIsRecording(false);
+    isRecordingRef.current = false;
     bufferRef.current = '';
   };
 
   const handleStartRecording = () => {
     setIsRecording(true);
+    isRecordingRef.current = true;
   };
 
   const handleStopRecording = () => {
     setIsRecording(false);
+    isRecordingRef.current = false;
   };
 
   const handleClearData = () => {
@@ -104,14 +114,17 @@ export default function Home() {
 
   const handleExportCSV = () => {
     const csvHeader = 'Timestamp,Thrust (g),Pressure (bar)\n';
-    const csvRows = dataPoints.map(d => `${d.timestamp},${d.thrust},${d.pressure}`).join('\n');
+    const csvRows = dataPoints
+      .map(d => `${(d as any).deviceTimestamp || d.timestamp},${d.thrust},${d.pressure}`)
+      .join('\n');
     const csv = csvHeader + csvRows;
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `serial-data-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+    const safeBase = (fileName || 'serial-data').replace(/[^a-zA-Z0-9-_]/g, '_');
+    a.download = `${safeBase}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -157,6 +170,8 @@ export default function Home() {
               onClearData={handleClearData}
               onExportCSV={handleExportCSV}
               dataPoints={dataPoints}
+            fileName={fileName}
+            onFileNameChange={setFileName}
             />
           </div>
 

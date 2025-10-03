@@ -4,6 +4,7 @@ export const dataPointSchema = z.object({
   timestamp: z.string(),
   thrust: z.number(),
   pressure: z.number(),
+  deviceTimestamp: z.string().optional(),
 });
 
 export type DataPoint = z.infer<typeof dataPointSchema>;
