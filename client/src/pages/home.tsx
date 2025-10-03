@@ -128,7 +128,6 @@ export default function Home() {
   const [fileName, setFileName] = useState<string>("serial-data");
   const [activeChartTab, setActiveChartTab] = useState<"live" | "review">("live");
   const [reviewRange, setReviewRange] = useState<PercentRange>([0, 100]);
-  const [liveRange, setLiveRange] = useState<PercentRange>([85, 100]);
 
   const portRef = useRef<SerialPort | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
@@ -137,10 +136,6 @@ export default function Home() {
   const isRecordingRef = useRef(false);
 
   const hasData = dataPoints.length > 0;
-
-  const updateLiveRange = useCallback((range: PercentRange) => {
-    setLiveRange(sanitizeRange(range));
-  }, []);
 
   const updateReviewRange = useCallback((range: PercentRange) => {
     setReviewRange(sanitizeRange(range));
@@ -159,12 +154,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!hasData) {
-      updateLiveRange([0, 100]);
       updateReviewRange([0, 100]);
     }
-  }, [hasData, updateLiveRange, updateReviewRange]);
+  }, [hasData, updateReviewRange]);
 
-  const sortedLiveRange = useMemo(() => sanitizeRange(liveRange), [liveRange]);
   const sortedReviewRange = useMemo(() => sanitizeRange(reviewRange), [reviewRange]);
 
   const parseSerialData = (line: string) => {
@@ -256,7 +249,6 @@ export default function Home() {
   const handleClearData = () => {
     setDataPoints([]);
     setCurrentData(null);
-    updateLiveRange([0, 100]);
     updateReviewRange([0, 100]);
   };
 
@@ -296,23 +288,13 @@ export default function Home() {
     };
   }, []);
 
-  const liveData = useMemo(() => sliceDataByPercent(dataPoints, sortedLiveRange), [dataPoints, sortedLiveRange]);
+  const liveData = useMemo(() => dataPoints.slice(-100), [dataPoints]);
   const reviewData = useMemo(() => sliceDataByPercent(dataPoints, sortedReviewRange), [dataPoints, sortedReviewRange]);
 
-  const liveSummary = useMemo(() => summarizeData(liveData), [liveData]);
   const reviewSummary = useMemo(() => summarizeData(reviewData), [reviewData]);
-
-  const handleLiveZoom = (direction: "in" | "out") => {
-    setLiveRange((prev) => zoomRange(prev, direction));
-  };
 
   const handleReviewZoom = (direction: "in" | "out") => {
     setReviewRange((prev) => zoomRange(prev, direction));
-  };
-
-  const handleLiveFollowLatest = () => {
-    const span = Math.max(sortedLiveRange[1] - sortedLiveRange[0], 10);
-    updateLiveRange([Math.max(0, 100 - span), 100]);
   };
 
   const handleReviewLatest = () => {
@@ -385,94 +367,16 @@ export default function Home() {
                     Showing {reviewSummary.count} points from {reviewSummary.startTimestamp} &rarr; {reviewSummary.endTimestamp}
                   </div>
                 )}
-                {activeChartTab === "live" && hasData && liveSummary && (
-                  <div className="text-xs font-medium text-muted-foreground sm:text-sm">
-                    Following live window {sortedLiveRange[0].toFixed(0)}% - {sortedLiveRange[1].toFixed(0)}%
-                  </div>
-                )}
               </div>
 
               <TabsContent value="live" className="space-y-4">
                 {hasData ? (
-                  <>
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Live Timeline</CardTitle>
-                        <CardDescription>
-                          Drag the handles to zoom/pan the stream. Keep the right handle at 100% to focus on incoming data.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-5">
-                        <div className="px-1">
-                          <Slider
-                            value={sortedLiveRange}
-                            min={0}
-                            max={100}
-                            step={1}
-                            onValueChange={(value) => {
-                              const [start, end] = value.length === 1 ? [value[0], value[0]] : [value[0], value[1]];
-                              updateLiveRange([start, end]);
-                            }}
-                          />
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button variant="outline" size="sm" onClick={() => handleLiveZoom("in")}>Zoom In</Button>
-                          <Button variant="outline" size="sm" onClick={() => handleLiveZoom("out")}>Zoom Out</Button>
-                          <Button variant="outline" size="sm" onClick={handleLiveFollowLatest}>Follow Latest</Button>
-                          <Button variant="ghost" size="sm" onClick={() => updateLiveRange([0, 100])}>Reset</Button>
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2 xl:grid-cols-3 sm:text-sm">
-                          <div>
-                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window %</p>
-                            <p className="font-mono text-sm">{sortedLiveRange[0].toFixed(0)} - {sortedLiveRange[1].toFixed(0)}</p>
-                          </div>
-                          <div>
-                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window start</p>
-                            <p className="font-mono text-sm">{liveSummary?.startTimestamp ?? "--:--:--"}</p>
-                          </div>
-                          <div>
-                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window end</p>
-                            <p className="font-mono text-sm">{liveSummary?.endTimestamp ?? "--:--:--"}</p>
-                          </div>
-                          <div>
-                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Points in view</p>
-                            <p className="font-mono text-sm">{liveSummary?.count ?? 0}</p>
-                          </div>
-                          <div>
-                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Thrust range (g)</p>
-                            <p className="font-mono text-sm">
-                              {liveSummary
-                                ? `${liveSummary.thrustMin.toFixed(2)} - ${liveSummary.thrustMax.toFixed(2)}`
-                                : "0.00 - 0.00"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Pressure range (bar)</p>
-                            <p className="font-mono text-sm">
-                              {liveSummary
-                                ? `${liveSummary.pressureMin.toFixed(2)} - ${liveSummary.pressureMax.toFixed(2)}`
-                                : "0.00 - 0.00"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Average readings</p>
-                            <p className="font-mono text-sm">
-                              {liveSummary
-                                ? `${liveSummary.thrustAvg.toFixed(2)} g / ${liveSummary.pressureAvg.toFixed(2)} bar`
-                                : "0.00 g / 0.00 bar"}
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <DataChart
-                      data={liveData}
-                      maxDataPoints={null}
-                      title="Live Data Preview"
-                      emptyMessage="Waiting for incoming serial data."
-                    />
-                  </>
+                  <DataChart
+                    data={liveData}
+                    maxDataPoints={100}
+                    title="Real-Time Data Chart"
+                    emptyMessage="Waiting for incoming serial data."
+                  />
                 ) : (
                   <Card>
                     <CardContent className="flex h-[400px] items-center justify-center text-center text-sm text-muted-foreground">
@@ -515,7 +419,7 @@ export default function Home() {
                         <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2 xl:grid-cols-3 sm:text-sm">
                           <div>
                             <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window %</p>
-                            <p className="font-mono text-sm">{sortedReviewRange[0].toFixed(0)} – {sortedReviewRange[1].toFixed(0)}</p>
+                            <p className="font-mono text-sm">{sortedReviewRange[0].toFixed(0)} - {sortedReviewRange[1].toFixed(0)}</p>
                           </div>
                           <div>
                             <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Window start</p>
@@ -533,16 +437,16 @@ export default function Home() {
                             <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Thrust range (g)</p>
                             <p className="font-mono text-sm">
                               {reviewSummary
-                                ? `${reviewSummary.thrustMin.toFixed(2)} – ${reviewSummary.thrustMax.toFixed(2)}`
-                                : "0.00 – 0.00"}
+                                ? `${reviewSummary.thrustMin.toFixed(2)} - ${reviewSummary.thrustMax.toFixed(2)}`
+                                : "0.00 - 0.00"}
                             </p>
                           </div>
                           <div>
                             <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Pressure range (bar)</p>
                             <p className="font-mono text-sm">
                               {reviewSummary
-                                ? `${reviewSummary.pressureMin.toFixed(2)} – ${reviewSummary.pressureMax.toFixed(2)}`
-                                : "0.00 – 0.00"}
+                                ? `${reviewSummary.pressureMin.toFixed(2)} - ${reviewSummary.pressureMax.toFixed(2)}`
+                                : "0.00 - 0.00"}
                             </p>
                           </div>
                           <div>
