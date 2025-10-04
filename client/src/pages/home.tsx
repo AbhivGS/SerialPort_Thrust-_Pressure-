@@ -147,71 +147,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    let isActive = true;
+    const user = loadUser();
+    if (!user) {
+      setLocation("/login");
+      setAuthChecked(true);
+      return;
+    }
 
-    const verifySession = async () => {
-      const storedUser = loadUser();
-      if (!storedUser) {
-        setLocation("/login");
-        return;
-      }
-
-      try {
-        const response = await fetch("/api/me", {
-          credentials: "include",
-        });
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            clearUser();
-            if (isActive) {
-              toast({
-                title: "Session expired",
-                description: "Please sign in again to export recordings.",
-                variant: "destructive",
-              });
-              setLocation("/login");
-            }
-            return;
-          }
-
-          throw new Error("Failed to verify session.");
-        }
-
-        const payload = await response.json().catch(() => null);
-
-        if (!isActive) {
-          return;
-        }
-
-        if (!payload?.user) {
-          throw new Error("Invalid session response.");
-        }
-
-        setCurrentUser(payload.user);
-        saveUser(payload.user);
-        setAuthChecked(true);
-      } catch (error) {
-        if (!isActive) {
-          return;
-        }
-        console.error("Failed to verify session", error);
-        clearUser();
-        toast({
-          title: "Connection error",
-          description: "Unable to verify your session. Please sign in again.",
-          variant: "destructive",
-        });
-        setLocation("/login");
-      }
-    };
-
-    void verifySession();
-
-    return () => {
-      isActive = false;
-    };
-  }, [setLocation, toast]);
+    setCurrentUser(user);
+    setAuthChecked(true);
+  }, [setLocation]);
 
   useEffect(() => {
     if (!hasRecordedData) {
