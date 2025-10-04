@@ -1,6 +1,7 @@
-﻿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +13,9 @@ interface RecordingListItem {
   fullName: string;
   fileName: string;
   createdAt: string;
+  storageProvider: string | null;
+  storagePath: string | null;
+  storagePublicUrl: string | null;
 }
 
 interface ListResponse {
@@ -24,6 +28,7 @@ export default function Admin() {
   const [recordings, setRecordings] = useState<RecordingListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filterTerm, setFilterTerm] = useState("");
 
   useEffect(() => {
     const user = loadUser();
@@ -61,6 +66,21 @@ export default function Admin() {
     return () => window.clearInterval(interval);
   }, [fetchRecordings]);
 
+  const filteredRecordings = useMemo(() => {
+    const query = filterTerm.trim().toLowerCase();
+    if (!query) {
+      return recordings;
+    }
+
+    return recordings.filter((recording) => {
+      const haystack = [recording.fileName, recording.fullName, recording.username]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [recordings, filterTerm]);
+
   const handleCopyLink = (id: number) => {
     const url = `${window.location.origin}/api/recordings/${id}/download`;
     navigator.clipboard
@@ -77,28 +97,42 @@ export default function Admin() {
       });
   };
 
+  const descriptionMessage = error
+    ? error
+    : recordings.length === 0
+    ? "Waiting for the first upload."
+    : filteredRecordings.length === 0
+    ? "No recordings match the current filter."
+    : "Latest uploads appear at the top.";
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6 space-y-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-semibold">Uploaded Recordings</h1>
             <p className="text-muted-foreground">Review CSV sessions shared by the test team.</p>
           </div>
+          <Input
+            value={filterTerm}
+            onChange={(event) => setFilterTerm(event.target.value)}
+            placeholder="Filter by user or filename"
+            className="w-full max-w-xs"
+          />
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Data Sessions</CardTitle>
-            <CardDescription>
-              {error ? error : "Latest uploads appear at the top."}
-            </CardDescription>
+            <CardDescription>{descriptionMessage}</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <p className="text-sm text-muted-foreground">Loading recordings...</p>
             ) : recordings.length === 0 ? (
               <p className="text-sm text-muted-foreground">No recordings uploaded yet.</p>
+            ) : filteredRecordings.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Try a different filter.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -107,11 +141,12 @@ export default function Admin() {
                     <TableHead>User</TableHead>
                     <TableHead>File name</TableHead>
                     <TableHead>Uploaded</TableHead>
+                    <TableHead>Storage</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recordings.map((recording) => (
+                  {filteredRecordings.map((recording) => (
                     <TableRow key={recording.id}>
                       <TableCell className="font-mono text-xs">{recording.id}</TableCell>
                       <TableCell>
@@ -124,23 +159,25 @@ export default function Admin() {
                       <TableCell className="text-sm text-muted-foreground">
                         {new Date(recording.createdAt).toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleCopyLink(recording.id)}
-                        >
+                      <TableCell className="text-sm text-muted-foreground">
+                        {recording.storagePublicUrl ? (recording.storageProvider ?? "cloud storage") : "Pending"}
+                      </TableCell>
+                      <TableCell className="flex flex-wrap justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleCopyLink(recording.id)}>
                           Copy link
                         </Button>
-                        <Button
-                          size="sm"
-                          asChild
-                          variant="default"
-                        >
+                        <Button size="sm" asChild variant="default">
                           <a href={`/api/recordings/${recording.id}/download`} target="_blank" rel="noreferrer">
                             Download
                           </a>
                         </Button>
+                        {recording.storagePublicUrl && (
+                          <Button size="sm" variant="secondary" asChild>
+                            <a href={recording.storagePublicUrl} target="_blank" rel="noreferrer">
+                              View online
+                            </a>
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

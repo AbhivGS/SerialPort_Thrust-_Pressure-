@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { z } from "zod";
 import { storage } from "./storage";
 import { saveRecording, listRecordings, getRecording } from "./database";
+import { uploadCsvToSupabase, isSupabaseConfigured } from "./supabase";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -103,7 +104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return res.json({ user: req.session.user });
   });
 
-  router.post("/recordings", requireAuth, (req, res, next) => {
+  router.post("/recordings", requireAuth, async (req, res, next) => {
     try {
       const parsed = recordingSchema.parse(req.body);
       const user = req.session.user!;
@@ -112,8 +113,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const csv = pointsToCsv(parsed.points);
-      const recordId = saveRecording(user.username, user.fullName, parsed.fileName, csv);
-      res.status(201).json({ id: recordId });
+      let storageProvider: string | null = null;
+      let storagePath: string | null = null;
+      let storagePublicUrl: string | null = null;
+
+      try {
+        const uploadResult = await uploadCsvToSupabase(parsed.fileName, csv);
+        if (uploadResult) {
+          storageProvider = uploadResult.provider;
+          storagePath = uploadResult.path;
+          storagePublicUrl = uploadResult.publicUrl;
+        } else if (isSupabaseConfigured()) {
+          console.warn("Supabase is configured but upload returned null");
+        }
+      } catch (storageError) {
+        console.error("Supabase upload failed", storageError);
+      }
+
+      const recordId = saveRecording(
+        user.username,
+        user.fullName,
+        parsed.fileName,
+        csv,
+        storageProvider,
+        storagePath,
+        storagePublicUrl,
+      );
+      res.status(201).json({ id: recordId, storageProvider, storagePath, storagePublicUrl });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
@@ -162,3 +188,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   return httpServer;
 }
+

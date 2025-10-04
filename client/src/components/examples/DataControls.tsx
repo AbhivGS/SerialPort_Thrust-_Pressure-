@@ -25,7 +25,6 @@ export default function DataControlsExample() {
         }}
         onClearData={() => console.log("Clear data")}
         onExportCSV={() => console.log("Export CSV")}
-        onUploadRecording={async () => console.log("Upload recording")}
         recordedPoints={mockData}
         fileName={fileName}
         onFileNameChange={setFileName}

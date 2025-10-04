@@ -340,19 +340,19 @@ export default function Home() {
     isRecordingRef.current = true;
   };
 
-  const handleUploadRecording = useCallback(async () => {
+  const handleUploadRecording = useCallback(async (): Promise<boolean> => {
     if (!recordedPoints.length || isUploading) {
-      return;
+      return false;
     }
 
     if (!currentUser) {
       toast({
         title: "Sign in required",
-        description: "Log in again to upload recordings for admin review.",
+        description: "Log in again to sync recordings for admin review.",
         variant: "destructive",
       });
       setLocation("/login");
-      return;
+      return false;
     }
 
     setIsUploading(true);
@@ -374,28 +374,35 @@ export default function Home() {
         }),
       });
 
+      const payload = await response.json().catch(() => ({}));
+
       if (response.status === 401 || response.status === 403) {
         clearUser();
         setCurrentUser(null);
         toast({
           title: "Session expired",
-          description: "Please sign in again to upload recordings.",
+          description: "Please sign in again to sync recordings.",
           variant: "destructive",
         });
         setLocation("/login");
-        return;
+        return false;
       }
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
         const message = typeof payload?.message === "string" ? payload.message : "Failed to upload recording.";
         throw new Error(message);
       }
 
+      const storageProvider = typeof payload?.storageProvider === "string" ? payload.storageProvider : null;
+      const storagePublicUrl = typeof payload?.storagePublicUrl === "string" ? payload.storagePublicUrl : null;
+
       toast({
-        title: "Recording uploaded",
-        description: "Admin can now review this session.",
+        title: storagePublicUrl ? "Recording uploaded" : "Recording saved",
+        description: storagePublicUrl
+          ? `Synced to ${storageProvider ?? "cloud storage"} for admin review.`
+          : "Saved for admin review.",
       });
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to upload recording.";
       toast({
@@ -403,7 +410,7 @@ export default function Home() {
         description: message,
         variant: "destructive",
       });
-      throw error;
+      return false;
     } finally {
       setIsUploading(false);
     }
@@ -419,10 +426,12 @@ export default function Home() {
     updateReviewRange([0, 100]);
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = useCallback(async () => {
     if (!recordedPoints.length) {
       return;
     }
+
+    await handleUploadRecording();
 
     const csvHeader = "Timestamp,Thrust (g),Pressure (bar)\n";
     const csvRows = recordedPoints
@@ -440,7 +449,7 @@ export default function Home() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+  }, [recordedPoints, fileName, handleUploadRecording]);
 
   const handleLogout = () => {
 
@@ -521,7 +530,6 @@ export default function Home() {
               onStopRecording={handleStopRecording}
               onClearData={handleClearData}
               onExportCSV={handleExportCSV}
-              onUploadRecording={handleUploadRecording}
               recordedPoints={recordedPoints}
               fileName={fileName}
               onFileNameChange={setFileName}
@@ -666,6 +674,8 @@ export default function Home() {
     </div>
   );
 }
+
+
 
 
 
