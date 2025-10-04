@@ -1,6 +1,7 @@
 ﻿import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
+import type { Database as BetterSqliteDatabase, Statement } from "better-sqlite3";
 
 export type RecordingRow = {
   id: number;
@@ -15,7 +16,7 @@ const dataDir = path.resolve(import.meta.dirname, "..", "data");
 const dbPath = path.join(dataDir, "recordings.db");
 fs.mkdirSync(dataDir, { recursive: true });
 
-const db = new Database(dbPath);
+const db: BetterSqliteDatabase = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 
 db.exec(`
@@ -34,11 +35,11 @@ const insertStmt = db.prepare(
    VALUES (@username, @fullName, @fileName, @csv, @createdAt)`
 );
 
-const listStmt = db.prepare<[], RecordingRow>(
+const listStmt: Statement<[], RecordingRow> = db.prepare(
   `SELECT id, username, fullName, fileName, createdAt, csv FROM recordings ORDER BY createdAt DESC`
 );
 
-const getStmt = db.prepare<[number], RecordingRow | undefined>(
+const getStmt: Statement<[number], RecordingRow | undefined> = db.prepare(
   `SELECT id, username, fullName, fileName, createdAt, csv FROM recordings WHERE id = ?`
 );
 

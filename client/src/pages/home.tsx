@@ -147,15 +147,71 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const user = loadUser();
-    if (!user) {
-      setLocation("/login");
-      return;
-    }
+    let isActive = true;
 
-    setCurrentUser(user);
-    setAuthChecked(true);
-  }, [setLocation]);
+    const verifySession = async () => {
+      const storedUser = loadUser();
+      if (!storedUser) {
+        setLocation("/login");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/me", {
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            clearUser();
+            if (isActive) {
+              toast({
+                title: "Session expired",
+                description: "Please sign in again to export recordings.",
+                variant: "destructive",
+              });
+              setLocation("/login");
+            }
+            return;
+          }
+
+          throw new Error("Failed to verify session.");
+        }
+
+        const payload = await response.json().catch(() => null);
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!payload?.user) {
+          throw new Error("Invalid session response.");
+        }
+
+        setCurrentUser(payload.user);
+        saveUser(payload.user);
+        setAuthChecked(true);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+        console.error("Failed to verify session", error);
+        clearUser();
+        toast({
+          title: "Connection error",
+          description: "Unable to verify your session. Please sign in again.",
+          variant: "destructive",
+        });
+        setLocation("/login");
+      }
+    };
+
+    void verifySession();
+
+    return () => {
+      isActive = false;
+    };
+  }, [setLocation, toast]);
 
   useEffect(() => {
     if (!hasRecordedData) {
@@ -344,6 +400,16 @@ export default function Home() {
       return;
     }
 
+    if (!currentUser) {
+      toast({
+        title: "Sign in required",
+        description: "Log in again to upload recordings for admin review.",
+        variant: "destructive",
+      });
+      setLocation("/login");
+      return;
+    }
+
     setIsUploading(true);
     try {
       const response = await fetch("/api/recordings", {
@@ -362,6 +428,18 @@ export default function Home() {
           })),
         }),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        clearUser();
+        setCurrentUser(null);
+        toast({
+          title: "Session expired",
+          description: "Please sign in again to upload recordings.",
+          variant: "destructive",
+        });
+        setLocation("/login");
+        return;
+      }
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -384,7 +462,7 @@ export default function Home() {
     } finally {
       setIsUploading(false);
     }
-  }, [recordedPoints, fileName, toast, isUploading]);
+  }, [recordedPoints, fileName, toast, isUploading, currentUser, setLocation]);
 
   const handleStopRecording = () => {
     setIsRecording(false);
@@ -400,10 +478,6 @@ export default function Home() {
     if (!recordedPoints.length) {
       return;
     }
-
-    void handleUploadRecording().catch(() => {
-      /* upload failure handled via toast */
-    });
 
     const csvHeader = "Timestamp,Thrust (g),Pressure (bar)\n";
     const csvRows = recordedPoints

@@ -1,6 +1,6 @@
 ﻿import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, Play, Pause, Trash2, StopCircle, PlayCircle } from "lucide-react";
+import { Download, Play, Pause, Trash2, StopCircle, PlayCircle, Upload } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { DataPoint } from "@shared/schema";
 
@@ -17,6 +17,7 @@ interface DataControlsProps {
   onStopStreaming: () => Promise<void> | void;
   onResumeStreaming: () => Promise<void> | void;
   isUploading: boolean;
+  onUploadRecording?: () => Promise<void> | void;
 }
 
 export default function DataControls({
@@ -32,6 +33,7 @@ export default function DataControls({
   onStopStreaming,
   onResumeStreaming,
   isUploading,
+  onUploadRecording,
 }: DataControlsProps) {
   const hasRecordedData = recordedPoints.length > 0;
 
@@ -106,6 +108,19 @@ export default function DataControls({
           <Trash2 className="mr-2 h-4 w-4" />
           Clear Recorded Data
         </Button>
+
+        {onUploadRecording && (
+          <Button
+            onClick={onUploadRecording}
+            variant="outline"
+            className="w-full"
+            disabled={!hasRecordedData || isUploading}
+            data-testid="button-upload-recording"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Upload Recording for Admin
+          </Button>
+        )}
 
         <Button
           onClick={onExportCSV}
